@@ -34,6 +34,30 @@ type CoordinatorReply struct {
 	NReduce  int
 }
 
+type WorkerFinishTaskArgs struct {
+	WorkerId              string
+	IntermediateFilenames []string
+}
+
+type WorkerFinishTaskReply struct{}
+
+type WorkerReduceTaskArgs struct {
+	WorkerId string
+}
+
+type WorkerReduceTaskReply struct {
+	WorkerId              string
+	IntermediateFilenames []string
+	NReduce               int
+}
+
+type WorkerTaskDoneArgs struct {
+	WorkerId string
+}
+
+type WorkerTaskDoneReply struct {
+}
+
 // Add your RPC definitions here.
 
 // Cook up a unique-ish UNIX-domain socket name
