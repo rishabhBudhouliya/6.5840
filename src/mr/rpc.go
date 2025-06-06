@@ -58,6 +58,13 @@ type WorkerTaskDoneArgs struct {
 type WorkerTaskDoneReply struct {
 }
 
+type ExitWorkerArgs struct {
+}
+
+type ExitWorkerReply struct {
+	IsDone bool
+}
+
 // Add your RPC definitions here.
 
 // Cook up a unique-ish UNIX-domain socket name

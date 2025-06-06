@@ -10,6 +10,7 @@ import (
 	"net/rpc"
 	"os"
 	"sort"
+	"time"
 )
 
 // for sorting by key.
@@ -47,27 +48,41 @@ func ihash(key string) int {
 // main/mrworker.go calls this function.
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-	// reply := go CallForTask()
-	mapReply := CallForMapTask()
-	file, err := os.Open(mapReply.Filename)
-	if err != nil {
-		log.Fatalf("cannot open %v", mapReply.Filename)
+	for {
+		if IsJobDone() {
+			return
+		}
+		mapReply := CallForMapTask()
+		if mapReply.Filename != "" {
+			file, err := os.Open(mapReply.Filename)
+			if err != nil {
+				log.Printf("cannot open %s", mapReply.Filename)
+			} else {
+				content, err := ioutil.ReadAll(file)
+				if err != nil {
+					log.Fatalf("cannot read %v", mapReply.Filename)
+				}
+				file.Close()
+				kv := mapf(mapReply.Filename, string(content))
+				files, err := createIntermediateFiles(mapReply.WorkerId, mapReply.NReduce)
+				intermediateFileNames := partition(files, kv, mapReply.NReduce)
+				if err != nil {
+					panic(err)
+				}
+				CallToFinishMapTask(wid.id, intermediateFileNames)
+			}
+		}
+		// free for a reduce task then?
+		reply := CallForReduceTask()
+		if reply.WorkerId == "NA" {
+			time.Sleep(time.Second)
+		} else {
+			reduce(reply, reducef)
+		}
 	}
-	content, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Fatalf("cannot read %v", mapReply.Filename)
-	}
-	file.Close()
-	kv := mapf(mapReply.Filename, string(content))
-	files, err := createIntermediateFiles(mapReply.WorkerId, mapReply.NReduce)
-	intermediateFileNames := partition(files, kv, mapReply.NReduce)
-	if err != nil {
-		panic(err)
-	}
-	CallToFinishMapTask(wid.id, intermediateFileNames)
-	fmt.Print("are we reaching here?")
-	// free for a reduce task then?
-	reply := CallForReduceTask()
+}
+
+func reduce(reply WorkerReduceTaskReply, reducef func(string, []string) string) {
 	filenames := reply.IntermediateFilenames
 	intermediate := readIntermediateFiles(filenames)
 	sort.Sort(ByKey(intermediate))
@@ -110,7 +125,6 @@ func CallForReduceTask() WorkerReduceTaskReply {
 	wid = &WorkerId{}
 	args := WorkerReduceTaskArgs{WorkerId: wid.id}
 	reply := WorkerReduceTaskReply{}
-	fmt.Print("are we calling reduce task?")
 	ok := call("Coordinator.GetReduceTask", &args, &reply)
 	wid.setWorkerId(reply.WorkerId)
 	if !ok {
@@ -134,6 +148,17 @@ func CallToMarkDone(workerId string) {
 	ok := call("Coordinator.MarkTaskDone", &args, &reply)
 	if !ok {
 		fmt.Print("Unable to tell Coordinator I'm done!")
+	}
+}
+
+func IsJobDone() bool {
+	args := ExitWorkerArgs{}
+	reply := ExitWorkerReply{}
+	ok := call("Coordinator.ExitWorker", &args, &reply)
+	if ok || !reply.IsDone {
+		return false
+	} else {
+		return true
 	}
 }
 
